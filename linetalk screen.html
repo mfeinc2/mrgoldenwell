@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>架空LINE風トーク作成ツール</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- ドラッグ＆ドロップ並び替え用ライブラリ SortableJS -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+  
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+    .tab-active { border-bottom: 3px solid white; font-weight: bold; opacity: 1; }
+    .tab-inactive { border-bottom: 3px solid transparent; opacity: 0.6; }
+
+    /* =========================================
+       🎨 テーマ変数の定義
+       ========================================= */
+    :root {
+      var(--chat-bg: #8BA2C4); var(--text-main: #FFFFFF); var(--text-time: rgba(255, 255, 255, 0.8));
+      var(--header-action: #FFFFFF); var(--footer-bg: #F5F5F5); var(--footer-icon: #8E8E93);
+      var(--input-bg: #FFFFFF); var(--input-border: #D1D5DB); var(--border-color: #E5E7EB);
+      var(--date-bg: rgba(107, 123, 153, 0.7)); var(--date-text: #FFFFFF);
+      var(--balloon-partner-bg: #FFFFFF); var(--balloon-partner-text: #111111);
+      var(--balloon-self-bg: #85E249); var(--balloon-self-text: #111111);
+      var(--suggest-bg: #FFFFFF); var(--suggest-border: #D1D5DB); var(--suggest-text: #111111);
+    }
+
+    .theme-standard {
+      --chat-bg: #8BA2C4; --text-main: #FFFFFF; --text-time: rgba(255, 255, 255, 0.8); --header-action: #FFFFFF; 
+      --footer-bg: #F5F5F5; --footer-icon: #8E8E93; --input-bg: #FFFFFF; --input-border: #D1D5DB; --border-color: #E5E7EB;
+      --date-bg: rgba(107, 123, 153, 0.7); --date-text: #FFFFFF;
+      --balloon-partner-bg: #FFFFFF; --balloon-partner-text: #111111; --balloon-self-bg: #85E249; --balloon-self-text: #111111;
+      --suggest-bg: #FFFFFF; --suggest-border: #D1D5DB; --suggest-text: #111111;
+    }
+    .theme-silver {
+      --chat-bg: #DCE3EE; --text-main: #111111; --text-time: #888888; --header-action: #007AFF; 
+      --footer-bg: #F9F9F9; --footer-icon: #8E8E93; --input-bg: #FFFFFF; --input-border: #E5E5EA; --border-color: #E5E5EA;
+      --date-bg: rgba(0, 0, 0, 0.12); --date-text: #444444;
+      --balloon-partner-bg: #FFFFFF; --balloon-partner-text: #111111; --balloon-self-bg: #8DE044; --balloon-self-text: #111111;
+      --suggest-bg: #FFFFFF; --suggest-border: #D1D5DB; --suggest-text: #111111;
+    }
+    .theme-dark {
+      --chat-bg: #0B0B0B; --text-main: #FFFFFF; --text-time: #888888; --header-action: #FFFFFF; 
+      --footer-bg: #1A1A1A; --footer-icon: #98989D; --input-bg: #2C2C2E; --input-border: #3A3A3C; --border-color: #38383A;
+      --date-bg: rgba(255, 255, 255, 0.15); --date-text: #CCCCCC;
+      --balloon-partner-bg: #242424; --balloon-partner-text: #F5F5F5; --balloon-self-bg: #636363; --balloon-self-text: #F5F5F5;
+      --suggest-bg: #2C2C2E; --suggest-border: #3A3A3C; --suggest-text: #FFFFFF;
+    }
+
+    .smartphone-frame {
+      width: 375px; height: 812px;
+      border: 14px solid #1a1a1a; border-radius: 48px;
+      overflow: hidden; position: relative; background-color: var(--chat-bg); 
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3); flex-shrink: 0;
+      transition: background-color 0.3s;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    
+    #preview-wrapper { transform-origin: top center; transition: transform 0.2s ease-out; margin: 0 auto; }
+    .dynamic-island { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 120px; height: 32px; background-color: black; border-radius: 20px; z-index: 50; }
+    
+    .balloon-left { position: relative; background: var(--balloon-partner-bg); border-radius: 20px; padding: 8px 12px; color: var(--balloon-partner-text); font-size: 15px; line-height: 1.4; word-wrap: break-word;}
+    .balloon-left::before { content: ""; position: absolute; top: 12px; left: -6px; border-style: solid; border-width: 6px 8px 6px 0; border-color: transparent var(--balloon-partner-bg) transparent transparent; }
+    .balloon-right { position: relative; background: var(--balloon-self-bg); border-radius: 20px; padding: 8px 12px; color: var(--balloon-self-text); font-size: 15px; line-height: 1.4; word-wrap: break-word;}
+    .balloon-right::before { content: ""; position: absolute; top: 12px; right: -6px; border-style: solid; border-width: 6px 0 6px 8px; border-color: transparent transparent transparent var(--balloon-self-bg); }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .cropper-view-box, .cropper-face { border-radius: 50%; }
+    .cropper-modal { opacity: 0.7; }
+    
+    /* Sortable.js ゴースト状態のスタイル */
+    .sortable-ghost { opacity: 0.4; }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800 h-screen flex flex-col">
+
+  <!-- ヘッダー -->
+  <header class="bg-[#5ac463] text-white shadow-md flex-shrink-0 z-40 sticky top-0">
+    <div class="px-4 pt-3 pb-1">
+      <h1 class="font-bold text-lg flex items-center justify-center">💬 LINE風トーク作成</h1>
+    </div>
+    <div class="flex justify-around px-2 text-sm mt-2">
+      <button id="btn-tab-edit" onclick="switchTab('edit')" class="flex-1 py-2 text-center tab-active transition-all">📝 編集する</button>
+      <button id="btn-tab-preview" onclick="switchTab('preview')" class="flex-1 py-2 text-center tab-inactive transition-all">📱 プレビュー＆保存</button>
+    </div>
+  </header>
+
+  <main class="flex-1 overflow-y-auto w-full relative">
+    
+    <!-- 📝 編集エリア -->
+    <div id="tab-edit-content" class="p-3 space-y-4 max-w-2xl mx-auto pb-24">
+      
+      <!-- リセットボタン (上部) -->
+      <div class="flex justify-between items-center mb-1 px-1">
+        <p class="text-xs text-gray-500 font-medium">💡 入力内容は自動的に保存されます。</p>
+        <button onclick="resetState()" class="text-[11px] text-red-500 bg-white px-3 py-1.5 rounded-full border border-red-200 hover:bg-red-50 font-bold shadow-sm flex items-center gap-1">
+          🔄 全てリセット
+        </button>
+      </div>
+
+      <!-- ⚙️ 全体設定 -->
+      <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
+        <div class="flex items-center justify-between border-b pb-2 mb-3">
+          <h2 class="font-bold text-base text-gray-700">⚙️ 全体設定</h2>
+        </div>
+        
+        <div class="space-y-4">
+          <!-- 💬 トーク種別 -->
+          <div>
+            <label class="block text-xs text-gray-600 mb-1.5 font-bold">💬 トーク種別</label>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="cursor-pointer">
+                <input type="radio" name="chatType" value="single" class="peer hidden" onchange="changeChatType('single')">
+                <div class="flex items-center justify-center gap-1.5 py-2.5 border rounded-xl peer-checked:bg-[#5ac463] peer-checked:border-[#5ac463] peer-checked:text-white bg-gray-50 text-gray-600 font-bold transition-all shadow-sm">
+                  👤 1対1
+                </div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="chatType" value="group" class="peer hidden" onchange="changeChatType('group')">
+                <div class="flex items-center justify-center gap-1.5 py-2.5 border rounded-xl peer-checked:bg-[#5ac463] peer-checked:border-[#5ac463] peer-checked:text-white bg-gray-50 text-gray-600 font-bold transition-all shadow-sm">
+                  👥 グループ
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- テーマ選択 -->
+          <div class="pt-3 border-t border-gray-100">
+            <label class="block text-xs text-gray-600 mb-1.5 font-bold">🎨 着せ替え（テーマ）</label>
+            <div class="grid grid-cols-3 gap-2">
+              <label class="cursor-pointer">
+                <input type="radio" name="theme" value="standard" class="peer hidden" onchange="changeTheme('standard')">
+                <div class="text-center py-2 border rounded-lg peer-checked:ring-2 peer-checked:ring-[#5ac463] peer-checked:bg-green-50 bg-gray-50 text-gray-700 text-sm font-bold transition-all shadow-sm">標準</div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="theme" value="silver" class="peer hidden" onchange="changeTheme('silver')">
+                <div class="text-center py-2 border rounded-lg peer-checked:ring-2 peer-checked:ring-gray-400 peer-checked:bg-gray-200 bg-gray-50 text-gray-700 text-sm font-bold transition-all shadow-sm">シルバー</div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="theme" value="dark" class="peer hidden" onchange="changeTheme('dark')">
+                <div class="text-center py-2 border rounded-lg peer-checked:ring-2 peer-checked:ring-gray-800 peer-checked:bg-gray-800 peer-checked:text-white bg-gray-50 text-gray-700 text-sm font-bold transition-all shadow-sm">ダーク</div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 時刻・未読数 -->
+          <div class="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100">
+            <div>
+              <label class="block text-xs text-gray-600 mb-1 font-bold">上部の時刻</label>
+              <input type="time" id="input-time" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-green-400 outline-none">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600 mb-1 font-bold">未読数表示</label>
+              <select id="input-unread" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-green-400 outline-none bg-white">
+                <!-- JSでオプション生成 -->
+              </select>
+            </div>
+          </div>
+
+          <!-- 👤 1対1設定 -->
+          <div id="settings-single" class="hidden space-y-3 bg-gray-50 p-3 rounded-lg border border-gray-200 mt-2">
+            <div>
+              <label class="block text-xs text-gray-600 mb-1 font-bold">相手の名前</label>
+              <input type="text" id="input-single-name" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-green-400 outline-none">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600 mb-1 font-bold">相手のアイコン</label>
+              <div class="flex items-center gap-2">
+                <div id="icon-preview-single" class="w-10 h-10 rounded-full bg-gray-400 overflow-hidden shrink-0 flex items-center justify-center text-white"></div>
+                <button onclick="openCropper('single')" class="bg-white border border-gray-300 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">画像選択</button>
+                <button onclick="removeIcon('single')" class="text-red-500 text-xs font-bold px-2 py-1.5 bg-red-50 rounded-lg">削除</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 👥 グループ設定 -->
+          <div id="settings-group" class="hidden space-y-3 bg-gray-50 p-3 rounded-lg border border-gray-200 mt-2">
+            <div class="grid grid-cols-5 gap-2">
+              <div class="col-span-3">
+                <label class="block text-xs text-gray-600 mb-1 font-bold">グループ名</label>
+                <input type="text" id="input-group-name" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-green-400 outline-none">
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs text-gray-600 mb-1 font-bold">人数表示</label>
+                <input type="number" id="input-group-count" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-green-400 outline-none" min="2">
+              </div>
+            </div>
+            
+            <div class="pt-2 border-t border-gray-200">
+              <label class="block text-xs text-gray-600 font-bold mb-1.5">メンバー設定 (最大5人)</label>
+              <div class="flex flex-col gap-1.5">
+                <div id="member-row-m1" class="flex items-center gap-1.5 bg-white p-1.5 rounded-lg border-l-4 border-y border-r border-gray-200">
+                  <div id="icon-preview-m1" class="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-white"></div>
+                  <button onclick="openCropper('m1')" class="text-[11px] bg-gray-100 border border-gray-300 px-2 py-1 rounded shrink-0">画像</button>
+                  <input type="text" data-member="m1" class="member-name-input flex-1 border border-gray-300 rounded p-1 text-sm focus:outline-none min-w-0" placeholder="名前">
+                  <button onclick="removeIcon('m1')" class="text-xs text-red-500 px-2 shrink-0">✕</button>
+                </div>
+                <div id="member-row-m2" class="flex items-center gap-1.5 bg-white p-1.5 rounded-lg border-l-4 border-y border-r border-gray-200">
+                  <div id="icon-preview-m2" class="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-white"></div>
+                  <button onclick="openCropper('m2')" class="text-[11px] bg-gray-100 border border-gray-300 px-2 py-1 rounded shrink-0">画像</button>
+                  <input type="text" data-member="m2" class="member-name-input flex-1 border border-gray-300 rounded p-1 text-sm focus:outline-none min-w-0" placeholder="名前">
+                  <button onclick="removeIcon('m2')" class="text-xs text-red-500 px-2 shrink-0">✕</button>
+                </div>
+                <div id="member-row-m3" class="flex items-center gap-1.5 bg-white p-1.5 rounded-lg border-l-4 border-y border-r border-gray-200">
+                  <div id="icon-preview-m3" class="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-white"></div>
+                  <button onclick="openCropper('m3')" class="text-[11px] bg-gray-100 border border-gray-300 px-2 py-1 rounded shrink-0">画像</button>
+                  <input type="text" data-member="m3" class="member-name-input flex-1 border border-gray-300 rounded p-1 text-sm focus:outline-none min-w-0" placeholder="名前">
+                  <button onclick="removeIcon('m3')" class="text-xs text-red-500 px-2 shrink-0">✕</button>
+                </div>
+                <div id="member-row-m4" class="flex items-center gap-1.5 bg-white p-1.5 rounded-lg border-l-4 border-y border-r border-gray-200">
+                  <div id="icon-preview-m4" class="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-white"></div>
+                  <button onclick="openCropper('m4')" class="text-[11px] bg-gray-100 border border-gray-300 px-2 py-1 rounded shrink-0">画像</button>
+                  <input type="text" data-member="m4" class="member-name-input flex-1 border border-gray-300 rounded p-1 text-sm focus:outline-none min-w-0" placeholder="名前">
+                  <button onclick="removeIcon('m4')" class="text-xs text-red-500 px-2 shrink-0">✕</button>
+                </div>
+                <div id="member-row-m5" class="flex items-center gap-1.5 bg-white p-1.5 rounded-lg border-l-4 border-y border-r border-gray-200">
+                  <div id="icon-preview-m5" class="w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-white"></div>
+                  <button onclick="openCropper('m5')" class="text-[11px] bg-gray-100 border border-gray-300 px-2 py-1 rounded shrink-0">画像</button>
+                  <input type="text" data-member="m5" class="member-name-input flex-1 border border-gray-300 rounded p-1 text-sm focus:outline-none min-w-0" placeholder="名前">
+                  <button onclick="removeIcon('m5')" class="text-xs text-red-500 px-2 shrink-0">✕</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      </section>
+
+      <!-- ✏️ メッセージ設定 -->
+      <section class="bg-white rounded-xl shadow-sm p-4 border border-gray-200 relative overflow-hidden">
+        <div class="flex items-center justify-between border-b pb-2 mb-3">
+          <h2 class="font-bold text-base text-gray-700">✏️ メッセージ <span id="msg-count" class="ml-1 bg-[#5ac463] text-white rounded-full px-2 py-0.5 text-xs">0</span></h2>
+        </div>
+        
+        <!-- 操作ボタン群 -->
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <button onclick="addMessage('date')" class="col-span-2 bg-slate-700 hover:bg-slate-800 text-white py-2 rounded-lg text-sm font-bold shadow-md transition-colors">＋ 新しい日付を追加</button>
+          <button onclick="addMessage('partner')" id="btn-add-partner" class="bg-gray-100 border border-gray-300 hover:bg-gray-200 text-gray-800 py-2 rounded-lg text-sm font-bold transition-colors">＋ 相手の発言</button>
+          <button onclick="addMessage('self')" class="bg-[#5ac463] hover:bg-green-600 text-white py-2 rounded-lg text-sm font-bold transition-colors">＋ 自分の発言</button>
+        </div>
+
+        <!-- エディタ領域 -->
+        <div id="message-list-editor" class="space-y-0 mt-2 pb-2"></div>
+      </section>
+
+    </div>
+
+    <!-- 📱 プレビューエリア -->
+    <div id="tab-preview-content" class="hidden p-4 flex flex-col items-center justify-start min-h-full pb-8">
+      <p class="text-xs text-gray-500 mb-4 text-center">💡 画面下部からダウンロード可能です</p>
+      
+      <div id="preview-wrapper">
+        <div id="preview-content" class="smartphone-frame flex flex-col theme-dark">
+          <!-- ステータスバー -->
+          <div class="h-12 w-full flex justify-between items-center px-[28px] pt-3.5 z-40 relative select-none">
+            <div class="text-[15px] font-bold tracking-tight z-10" id="status-time" style="color: var(--text-main);">12:00</div>
+            <div class="dynamic-island"></div>
+            <div class="flex space-x-1.5 items-center z-10 opacity-90" style="color: var(--text-main);">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M4 17h3V7H4v10zm5 0h3V3H9v14zm5 0h3v-7h-3v7zm5 0h3v-3h-3v3z"/></svg>
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C7 3 2.5 5 0 8l12 14L24 8C21.5 5 17 3 12 3zm0 2.5c3.8 0 7.2 1.4 9.6 3.7L12 19 2.4 9.2C4.8 6.9 8.2 5.5 12 5.5z"/></svg>
+              <div class="flex items-center border-[1.5px] rounded-[4px] px-[1px] py-[2px] w-[22px] h-[11px] relative border-current">
+                <div class="bg-current h-full w-[60%] rounded-[1.5px]"></div>
+                <div class="absolute -right-[3px] bg-current w-[2px] h-[4px] rounded-r-[2px]"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 🔝 トークヘッダー -->
+          <div class="h-[44px] flex items-center px-2 justify-between relative z-30 border-b border-transparent">
+            <!-- 戻る＆未読数 -->
+            <div class="flex items-center overflow-hidden shrink-0" style="color: var(--header-action);">
+              <svg class="w-[28px] h-[28px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+              <span class="text-[16px] font-semibold tracking-tight -ml-1" id="preview-unread"></span>
+            </div>
+            <!-- 名前 -->
+            <div class="flex-1 flex justify-start items-center ml-2 overflow-hidden">
+              <span class="font-bold text-[17px] truncate" id="preview-header-name" style="color: var(--text-main);"></span>
+            </div>
+            <!-- アイコン -->
+            <div class="flex items-center space-x-[18px] opacity-90 shrink-0 mr-1" style="color: var(--header-action);">
+              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+              <svg class="w-[22px] h-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><text x="12" y="18" text-anchor="middle" font-size="8" font-family="sans-serif" stroke-width="1">31</text></svg>
+              <svg class="w-[24px] h-[24px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </div>
+          </div>
+
+          <!-- 💬 チャットエリア -->
+          <div class="flex-1 overflow-y-auto no-scrollbar px-3 pt-2 pb-4 w-full relative z-20" id="chat-messages"></div>
+
+          <!-- 🤖 フッター -->
+          <div class="w-full absolute bottom-0 z-40 border-t flex flex-col" style="background-color: var(--footer-bg); border-color: var(--border-color);">
+            <div class="h-[52px] flex items-center px-3 space-x-3 w-full">
+              <svg class="w-[26px] h-[26px] shrink-0" style="color: var(--footer-icon);" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path></svg>
+              <svg class="w-[26px] h-[26px] shrink-0" style="color: var(--footer-icon);" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+              <svg class="w-[26px] h-[26px] shrink-0" style="color: var(--footer-icon);" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+              <div class="flex-1 h-[36px] rounded-full border flex items-center px-3.5 justify-between" style="background-color: var(--input-bg); border-color: var(--input-border);">
+                <span class="text-[15px] opacity-60" style="color: var(--text-main);">Aa</span>
+                <svg class="w-[20px] h-[20px] opacity-60" style="color: var(--text-main);" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+              </div>
+              <svg class="w-[26px] h-[26px] shrink-0" style="color: var(--footer-icon);" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+            </div>
+            <div class="h-[48px] px-3 pb-3 flex items-center gap-2 overflow-x-auto whitespace-nowrap no-scrollbar w-full">
+              <div class="w-[28px] h-[28px] rounded-full shrink-0 flex items-center justify-center text-white" style="background: linear-gradient(135deg, #A855F7, #3B82F6);">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>
+              </div>
+              <div class="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold tracking-wide" style="background-color: var(--suggest-bg); border-color: var(--suggest-border); color: var(--suggest-text);">返信を提案</div>
+              <div class="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold tracking-wide" style="background-color: var(--suggest-bg); border-color: var(--suggest-border); color: var(--suggest-text);">話題を提案</div>
+              <div class="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold tracking-wide" style="background-color: var(--suggest-bg); border-color: var(--suggest-border); color: var(--suggest-text);">ムードを分析</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-8 w-full max-w-[375px]">
+        <button onclick="showConsentModal()" id="save-btn" class="w-full bg-[#5ac463] hover:bg-green-600 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition-all flex justify-center items-center active:scale-95">
+          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          画像をダウンロード
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ✂️ 画像トリミングモーダル -->
+  <input type="file" id="input-icon" accept="image/*" class="hidden">
+  <div id="cropper-modal" class="hidden fixed inset-0 bg-black bg-opacity-80 z-[100] flex flex-col items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl overflow-hidden flex flex-col">
+      <div class="p-4 border-b"><h3 class="font-bold text-center text-gray-800">アイコンの位置調整</h3></div>
+      <div class="w-full h-[300px] bg-gray-200 relative overflow-hidden"><img id="image-to-crop" src="" alt="Picture" class="block max-w-full"></div>
+      <div class="p-4 bg-gray-50">
+        <p class="text-xs text-center text-gray-500 mb-4">💡 画像をドラッグ＆ピンチして円の中に収めてください</p>
+        <div class="flex gap-3">
+          <button onclick="cancelCrop()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 rounded-xl font-bold transition-colors">キャンセル</button>
+          <button onclick="applyCrop()" class="flex-1 bg-[#5ac463] hover:bg-green-600 text-white py-3 rounded-xl font-bold transition-colors shadow-md">決定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⚠️ 同意ポップアップモーダル -->
+  <div id="consent-modal" class="hidden fixed inset-0 bg-black bg-opacity-80 z-[100] flex flex-col items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl overflow-hidden flex flex-col shadow-2xl">
+      <div class="bg-red-500 p-4 text-white text-center font-bold">
+        ⚠️ ご利用にあたっての注意
+      </div>
+      <div class="p-5 text-sm text-gray-700 space-y-4">
+        <p class="font-medium text-red-600 bg-red-50 p-2 rounded">
+          本ツールはカナイハメ撮り専用ツールです。カナイ以外に対する悪意のある利用や、第三者への迷惑行為を固く禁じます。
+        </p>
+        <p>
+          本ツールを使用して作成された画像により、カナイ以外にいかなる不利益や損害が生じた場合でも、作成者は一切の責任を負いません。なお金井に生じる不利益や損害はカナイの自己責任とします。
+        </p>
+        <label class="flex items-start gap-2 mt-4 cursor-pointer bg-gray-50 p-3 rounded-lg border border-gray-200">
+          <input type="checkbox" id="consent-checkbox" class="mt-0.5 w-4 h-4 text-green-500 rounded border-gray-300 focus:ring-green-500" onchange="toggleConsentButton()">
+          <span class="font-bold text-gray-800">上記の内容を理解し、同意して画像を出力する</span>
+        </label>
+      </div>
+      <div class="p-4 bg-gray-50 border-t flex gap-3">
+        <button onclick="closeConsentModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 rounded-xl font-bold transition-colors">キャンセル</button>
+        <button id="btn-execute-download" onclick="executeDownload()" disabled class="flex-1 bg-[#5ac463] text-white py-3 rounded-xl font-bold transition-colors shadow-md disabled:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed">ダウンロード</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🛑 汎用確認ポップアップモーダル (追加) -->
+  <div id="custom-confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 z-[200] flex flex-col items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl overflow-hidden flex flex-col shadow-2xl">
+      <div class="p-6 text-center text-gray-800 font-bold whitespace-pre-wrap" id="custom-confirm-message">
+        本当に削除しますか？
+      </div>
+      <div class="flex border-t border-gray-200">
+        <button onclick="closeConfirmModal()" class="flex-1 py-4 bg-gray-50 hover:bg-gray-100 text-gray-600 font-bold border-r border-gray-200 transition-colors">キャンセル</button>
+        <button id="custom-confirm-ok" onclick="executeConfirmAction()" class="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white font-bold transition-colors">削除する</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- 🎨 メンバーカラー定義 ---
+    const memberColors = {
+      m1: { bg: 'bg-pink-50', border: 'border-pink-200', left: 'border-l-pink-400', badge: 'bg-pink-200 text-pink-800', input: 'focus:ring-pink-400 border-pink-300 placeholder-pink-300', btn: 'hover:bg-pink-100 border-pink-300', iconBg: 'bg-pink-400' },
+      m2: { bg: 'bg-blue-50', border: 'border-blue-200', left: 'border-l-blue-400', badge: 'bg-blue-200 text-blue-800', input: 'focus:ring-blue-400 border-blue-300 placeholder-blue-300', btn: 'hover:bg-blue-100 border-blue-300', iconBg: 'bg-blue-400' },
+      m3: { bg: 'bg-orange-50', border: 'border-orange-200', left: 'border-l-orange-400', badge: 'bg-orange-200 text-orange-800', input: 'focus:ring-orange-400 border-orange-300 placeholder-orange-300', btn: 'hover:bg-orange-100 border-orange-300', iconBg: 'bg-orange-400' },
+      m4: { bg: 'bg-purple-50', border: 'border-purple-200', left: 'border-l-purple-400', badge: 'bg-purple-200 text-purple-800', input: 'focus:ring-purple-400 border-purple-300 placeholder-purple-300', btn: 'hover:bg-purple-100 border-purple-300', iconBg: 'bg-purple-400' },
+      m5: { bg: 'bg-teal-50', border: 'border-teal-200', left: 'border-l-teal-400', badge: 'bg-teal-200 text-teal-800', input: 'focus:ring-teal-400 border-teal-300 placeholder-teal-300', btn: 'hover:bg-teal-100 border-teal-300', iconBg: 'bg-teal-400' }
+    };
+
+    // --- 初期デフォルトステート ---
+    const DEFAULT_STATE = {
+      theme: 'standard',
+      time: '12:00',
+      unreadCount: 0,
+      chatType: 'single', 
+      singlePartner: { name: '', icon: null },
+      groupInfo: { name: '', count: 2 },
+      groupMembers: [
+        { id: 'm1', name: '', icon: null },
+        { id: 'm2', name: '', icon: null },
+        { id: 'm3', name: '', icon: null },
+        { id: 'm4', name: '', icon: null },
+        { id: 'm5', name: '', icon: null },
+      ],
+      messages: []
+    };
+
+    // --- State管理 (LocalStorage対応) ---
+    let state = null;
+    function loadState() {
+      try {
+        const saved = localStorage.getItem('lineMockupData');
+        if (saved) state = JSON.parse(saved);
+        else state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      } catch(e) {
+        state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      }
+    }
+    
+    function saveState() {
+      try { localStorage.setItem('lineMockupData', JSON.stringify(state)); } catch(e) { console.warn(e); }
+    }
+
+    // --- 💡 カスタム確認ダイアログ処理 (追加) ---
+    let confirmActionCallback = null;
+    function showConfirm(message, okText, callback) {
+      document.getElementById('custom-confirm-message').textContent = message;
+      document.getElementById('custom-confirm-ok').textContent = okText;
+      confirmActionCallback = callback;
+      document.getElementById('custom-confirm-modal').classList.remove('hidden');
+    }
+    
+    function closeConfirmModal() {
+      document.getElementById('custom-confirm-modal').classList.add('hidden');
+      confirmActionCallback = null;
+    }
+    
+    function executeConfirmAction() {
+      if (confirmActionCallback) confirmActionCallback();
+      closeConfirmModal();
+    }
+
+    // --- リセット処理 (独自ダイアログに変更) ---
+    function resetState() {
+      showConfirm('全てリセットして初期状態に戻しますか？\n（アップロードした画像やテキストが消去されます）', 'リセット', () => {
+        localStorage.removeItem('lineMockupData');
+        location.reload(); 
+      });
+    }
+
+    // --- UI/フォーム同期 ---
+    function initUnreadDropdown() {
+      const select = document.getElementById('input-unread');
+      select.innerHTML = '';
+      for(let i=0; i<=99; i++){
+        let opt = document.createElement('option');
+        opt.value = i;
+        if(i === 0) opt.text = '0 (非表示)';
+        else if(i === 99) opt.text = '99+';
+        else opt.text = i;
+        select.appendChild(opt);
+      }
+    }
+
+    function syncFormFromState() {
+      document.querySelector(`input[name="theme"][value="${state.theme}"]`).checked = true;
+      document.getElementById('input-time').value = state.time;
+      document.getElementById('input-unread').value = state.unreadCount;
+      document.querySelector(`input[name="chatType"][value="${state.chatType}"]`).checked = true;
+      
+      document.getElementById('input-single-name').value = state.singlePartner.name;
+      document.getElementById('input-group-name').value = state.groupInfo.name;
+      document.getElementById('input-group-count').value = state.groupInfo.count;
+      state.groupMembers.forEach(m => {
+        const input = document.querySelector(`input[data-member="${m.id}"]`);
+        if(input) input.value = m.name;
+      });
+
+      changeTheme(state.theme);
+      changeChatType(state.chatType);
+    }
+
+    function switchTab(tabName) {
+      const editContent = document.getElementById('tab-edit-content'); const previewContent = document.getElementById('tab-preview-content');
+      const btnEdit = document.getElementById('btn-tab-edit'); const btnPreview = document.getElementById('btn-tab-preview');
+      if (tabName === 'edit') {
+        editContent.classList.remove('hidden'); previewContent.classList.add('hidden');
+        btnEdit.classList.replace('tab-inactive', 'tab-active'); btnPreview.classList.replace('tab-active', 'tab-inactive');
+      } else {
+        editContent.classList.add('hidden'); previewContent.classList.remove('hidden');
+        btnEdit.classList.replace('tab-active', 'tab-inactive'); btnPreview.classList.replace('tab-inactive', 'tab-active');
+        renderPreview(); setTimeout(adjustPreviewScale, 10);
+      }
+    }
+    
+    function changeTheme(themeName) {
+      state.theme = themeName;
+      const preview = document.getElementById('preview-content');
+      preview.classList.remove('theme-standard', 'theme-silver', 'theme-dark');
+      preview.classList.add(`theme-${themeName}`);
+      saveState();
+    }
+
+    function changeChatType(type) {
+      state.chatType = type;
+      if (type === 'single') {
+        document.getElementById('settings-single').classList.remove('hidden');
+        document.getElementById('settings-group').classList.add('hidden');
+        document.getElementById('btn-add-partner').innerText = '＋ 相手の発言';
+      } else {
+        document.getElementById('settings-single').classList.add('hidden');
+        document.getElementById('settings-group').classList.remove('hidden');
+        document.getElementById('btn-add-partner').innerText = '＋ メンバーの発言';
+      }
+      renderControlPanel(); renderPreview(); saveState();
+    }
+
+    function adjustPreviewScale() {
+      const wrapper = document.getElementById('preview-wrapper'); const container = document.getElementById('tab-preview-content');
+      if (container.classList.contains('hidden')) return;
+      const containerWidth = container.clientWidth - 32; const frameWidth = 375;
+      if (containerWidth < frameWidth) {
+        const scale = containerWidth / frameWidth; wrapper.style.transform = `scale(${scale})`; wrapper.style.height = `${812 * scale}px`;
+      } else { wrapper.style.transform = `scale(1)`; wrapper.style.height = `812px`; }
+    }
+    window.addEventListener('resize', adjustPreviewScale);
+
+    // --- 文字列処理・アイコン生成 ---
+    function escapeHTML(str) { return str.replace(/[&<>'"]/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag] || tag)); }
+    function nl2br(str) { return str.replace(/\n/g, '<br>'); }
+    
+    const getIconHtml = (iconData) => {
+      if (iconData) return `<img src="${iconData}" class="w-full h-full object-cover">`;
+      return `<svg class="w-full h-full p-1.5 text-white opacity-90" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+    };
+
+    // --- ✂️ 画像トリミング処理 ---
+    let currentCropTarget = null;
+    let cropper = null;
+    document.getElementById('input-icon').addEventListener('change', function(e) {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        document.getElementById('image-to-crop').src = event.target.result;
+        document.getElementById('cropper-modal').classList.remove('hidden');
+        if (cropper) cropper.destroy();
+        const imageElement = document.getElementById('image-to-crop');
+        cropper = new Cropper(imageElement, { aspectRatio: 1, viewMode: 1, dragMode: 'move', autoCropArea: 0.8, cropBoxMovable: false, cropBoxResizable: false, toggleDragModeOnDblclick: false, background: false });
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function openCropper(target) { 
+      currentCropTarget = target; 
+      document.getElementById('input-icon').value = ''; 
+      document.getElementById('input-icon').click(); 
+    }
+    
+    function cancelCrop() { 
+      document.getElementById('cropper-modal').classList.add('hidden'); 
+      if (cropper) { cropper.destroy(); cropper = null; } 
+    }
+    
+    function applyCrop() {
+      if (!cropper) return;
+      const canvas = cropper.getCroppedCanvas({ width: 120, height: 120 });
+      const dataUrl = canvas.toDataURL('image/png');
+      
+      if (currentCropTarget === 'single') state.singlePartner.icon = dataUrl;
+      else { const m = state.groupMembers.find(m => m.id === currentCropTarget); if (m) m.icon = dataUrl; }
+      
+      updateAllIconPreviews(); cancelCrop(); saveState();
+      if (!document.getElementById('tab-preview-content').classList.contains('hidden')) renderPreview();
+    }
+    
+    function removeIcon(target) {
+      if (target === 'single') state.singlePartner.icon = null;
+      else { const m = state.groupMembers.find(m => m.id === target); if (m) m.icon = null; }
+      updateAllIconPreviews(); saveState();
+      if (!document.getElementById('tab-preview-content').classList.contains('hidden')) renderPreview();
+    }
+    
+    function updateAllIconPreviews() {
+      const sp = document.getElementById('icon-preview-single');
+      sp.innerHTML = getIconHtml(state.singlePartner.icon);
+      sp.className = `w-10 h-10 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-white ${state.singlePartner.icon ? 'bg-transparent' : 'bg-gray-400'}`;
+      
+      state.groupMembers.forEach(m => {
+        const el = document.getElementById(`icon-preview-${m.id}`);
+        if(el) {
+          el.innerHTML = getIconHtml(m.icon);
+          const c = memberColors[m.id].iconBg;
+          el.className = `w-7 h-7 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-white ${m.icon ? 'bg-transparent' : c}`;
+        }
+        const row = document.getElementById(`member-row-${m.id}`);
+        if(row) {
+          const c = memberColors[m.id];
+          row.className = `flex items-center gap-1.5 bg-white p-1.5 rounded-lg border-l-4 border-y border-r ${c.left} border-gray-200`;
+        }
+      });
+    }
+
+    // --- パネル描画 ---
+    function renderControlPanel() {
+      const container = document.getElementById('message-list-editor');
+      container.innerHTML = '';
+      document.getElementById('msg-count').textContent = state.messages.length;
+
+      state.messages.forEach((msg, index) => {
+        const item = document.createElement('div');
+        item.dataset.index = index;
+        
+        if (msg.type === 'date') {
+          const dType = msg.dateType || 'today';
+          const cDate = msg.customDate || '';
+
+          item.className = 'message-item bg-slate-700 rounded-xl p-3 shadow-md flex flex-col gap-2 mt-6 first:mt-0 relative z-10 border border-slate-800';
+          item.innerHTML = `
+            <div class="flex justify-between items-center">
+              <div class="flex items-center gap-1">
+                <span class="drag-handle cursor-move text-slate-400 hover:text-white px-2 text-lg" title="ドラッグして移動">≡</span>
+                <span class="text-xs bg-slate-500 font-bold px-2 py-1 rounded text-white flex items-center gap-1">📅 日付の区切り</span>
+              </div>
+              <button class="delete-btn text-red-300 hover:bg-slate-600 font-medium text-xs px-2 py-1 rounded transition-colors">🗑️ 削除</button>
+            </div>
+            
+            <div class="flex gap-2 items-center">
+              <select data-field="dateType" class="bg-slate-600 text-white border border-slate-500 rounded-lg p-2 text-sm focus:ring-2 focus:ring-slate-400 outline-none font-bold">
+                <option value="today" ${dType === 'today' ? 'selected' : ''}>今日</option>
+                <option value="yesterday" ${dType === 'yesterday' ? 'selected' : ''}>昨日</option>
+                <option value="custom" ${dType === 'custom' ? 'selected' : ''}>日付指定</option>
+              </select>
+              <input type="date" data-field="customDate" class="flex-1 bg-slate-600 text-[13px] text-white border border-slate-500 rounded-lg p-2 focus:ring-2 focus:ring-slate-400 outline-none font-bold ${dType === 'custom' ? '' : 'hidden'}" value="${cDate}">
+            </div>
+
+            <div class="flex justify-end mt-1 gap-2"><button class="up-btn bg-slate-600 hover:bg-slate-500 text-white border border-slate-500 rounded px-3 py-1 text-xs font-bold">↑</button><button class="down-btn bg-slate-600 hover:bg-slate-500 text-white border border-slate-500 rounded px-3 py-1 text-xs font-bold">↓</button></div>
+          `;
+        } else {
+          item.className = 'message-item border-y border-r border-l-4 rounded-xl p-3 shadow-sm flex flex-col gap-2 relative ml-4 mt-3 bg-white';
+          
+          if (msg.type === 'partner') {
+            const pId = msg.partnerId || 'm1';
+            const c = memberColors[pId] || memberColors.m1; 
+            item.classList.add(c.bg, c.border, c.left);
+            
+            let memberSelectHtml = '';
+            if (state.chatType === 'group') {
+              const options = state.groupMembers.map(m => `<option value="${m.id}" ${pId === m.id ? 'selected' : ''}>${escapeHTML(m.name || '未設定')}</option>`).join('');
+              memberSelectHtml = `<select data-field="partnerId" class="w-full bg-white border rounded p-1.5 text-xs focus:outline-none focus:ring-1 ${c.input}">${options}</select>`;
+            }
+
+            item.innerHTML = `
+              <div class="flex justify-between items-center mb-0.5">
+                <div class="flex items-center gap-1">
+                  <span class="drag-handle cursor-move text-gray-400 hover:text-gray-600 px-2 text-lg" title="ドラッグして移動">≡</span>
+                  <span class="text-[11px] font-bold px-2 py-1 rounded flex items-center gap-1 ${c.badge}">👤 ${state.chatType==='group'?'メンバー':'相手'}</span>
+                </div>
+                <button class="delete-btn text-red-500 font-medium text-xs px-2 py-1 rounded ${c.btn}">🗑️ 削除</button>
+              </div>
+              ${memberSelectHtml}
+              <textarea data-field="text" class="w-full border rounded-lg p-2 text-sm h-16 resize-none focus:ring-2 outline-none bg-white ${c.input}">${escapeHTML(msg.text)}</textarea>
+              <div class="flex justify-between items-center"><input type="time" data-field="time" class="border rounded-lg p-1.5 text-xs w-24 bg-white outline-none ${c.input}" value="${msg.time}"><div class="flex gap-2"><button class="up-btn bg-white rounded px-3 py-1 text-xs font-bold border ${c.btn}">↑</button><button class="down-btn bg-white rounded px-3 py-1 text-xs font-bold border ${c.btn}">↓</button></div></div>
+            `;
+          } else if (msg.type === 'self') {
+            item.classList.add('bg-green-50', 'border-green-200', 'border-l-green-400');
+            
+            let readInputHtml = '';
+            if (state.chatType === 'single') {
+              readInputHtml = `<label class="text-[11px] flex items-center text-gray-700 cursor-pointer font-bold"><input type="checkbox" data-field="read" class="mr-1 w-3.5 h-3.5 text-green-500 rounded border-gray-300" ${msg.read ? 'checked' : ''}>既読</label>`;
+            } else {
+              readInputHtml = `<label class="text-[11px] flex items-center text-gray-700 font-bold">既読数<input type="number" data-field="readCount" class="ml-1.5 w-12 border border-gray-300 rounded p-1 text-center bg-white" value="${msg.readCount !== undefined ? msg.readCount : 1}" min="0"></label>`;
+            }
+
+            item.innerHTML = `
+              <div class="flex justify-between items-center mb-0.5">
+                <div class="flex items-center gap-1">
+                  <span class="drag-handle cursor-move text-green-400 hover:text-green-700 px-2 text-lg" title="ドラッグして移動">≡</span>
+                  <span class="text-[11px] bg-green-200 font-bold px-2 py-1 rounded text-green-800 flex items-center gap-1">🟩 自分の発言</span>
+                </div>
+                <button class="delete-btn text-red-500 font-medium text-xs px-2 py-1 hover:bg-green-100 rounded">🗑️ 削除</button>
+              </div>
+              <textarea data-field="text" class="w-full border border-green-300 rounded-lg p-2 text-sm h-16 resize-none focus:ring-2 focus:ring-green-400 outline-none bg-white">${escapeHTML(msg.text)}</textarea>
+              <div class="flex justify-between items-center">
+                <div class="flex gap-3 items-center">
+                  <input type="time" data-field="time" class="border border-green-300 rounded-lg p-1.5 text-xs w-20 bg-white outline-none" value="${msg.time}">
+                  ${readInputHtml}
+                </div>
+                <div class="flex gap-1.5">
+                  <button class="up-btn bg-white hover:bg-green-100 border border-green-300 rounded px-3 py-1 text-xs font-bold">↑</button>
+                  <button class="down-btn bg-white hover:bg-green-100 border border-green-300 rounded px-3 py-1 text-xs font-bold">↓</button>
+                </div>
+              </div>
+            `;
+          }
+        }
+        container.appendChild(item);
+      });
+    }
+
+    // --- プレビュー描画 ---
+    function renderPreview() {
+      const unreadEl = document.getElementById('preview-unread');
+      const unreadValue = parseInt(state.unreadCount, 10);
+      if (isNaN(unreadValue) || unreadValue <= 0) unreadEl.textContent = '';
+      else unreadEl.textContent = unreadValue >= 99 ? '99+' : unreadValue;
+
+      const nameEl = document.getElementById('preview-header-name');
+      if (state.chatType === 'single') nameEl.textContent = state.singlePartner.name;
+      else nameEl.textContent = `${state.groupInfo.name} ${state.groupInfo.count > 0 ? `(${state.groupInfo.count})` : ''}`;
+
+      document.getElementById('status-time').textContent = state.time;
+
+      const container = document.getElementById('chat-messages');
+      container.innerHTML = '';
+
+      state.messages.forEach(msg => {
+        const item = document.createElement('div');
+        if (msg.type === 'date') {
+          item.className = 'flex justify-center my-[18px]';
+          
+          let displayText = '今日';
+          if (msg.dateType === 'yesterday') {
+            displayText = '昨日';
+          } else if (msg.dateType === 'custom' && msg.customDate) {
+            const d = new Date(msg.customDate);
+            if (!isNaN(d.getTime())) {
+              const days = ['日', '月', '火', '水', '木', '金', '土'];
+              displayText = `${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`;
+            } else {
+              displayText = '日付未設定';
+            }
+          } else if (msg.text && !msg.dateType) {
+            displayText = msg.text;
+          }
+
+          item.innerHTML = `<span style="background-color: var(--date-bg); color: var(--date-text);" class="text-[11px] px-[14px] py-[6px] rounded-full drop-shadow-sm font-medium tracking-wide">${escapeHTML(displayText)}</span>`;
+        } else if (msg.type === 'partner') {
+          
+          let pName = ''; let pIcon = null; let pIconBg = 'bg-gray-400';
+          if (state.chatType === 'single') {
+            pIcon = state.singlePartner.icon;
+          } else {
+            const member = state.groupMembers.find(m => m.id === msg.partnerId) || state.groupMembers[0];
+            pName = member.name; pIcon = member.icon;
+            pIconBg = memberColors[member.id].iconBg;
+          }
+
+          item.className = 'flex items-start mb-4 pr-2';
+          item.innerHTML = `
+            <div class="w-[34px] h-[34px] rounded-full ${pIcon ? 'bg-transparent' : pIconBg} shrink-0 mr-2 flex items-center justify-center overflow-hidden shadow-sm mt-1">
+              ${getIconHtml(pIcon)}
+            </div>
+            <div class="flex-1 max-w-[85%]">
+              ${pName ? `<div style="color: var(--text-main);" class="text-[11px] mb-[2px] ml-1.5 font-bold tracking-wide">${escapeHTML(pName)}</div>` : ''}
+              <div class="flex items-end">
+                <div class="balloon-left shadow-sm">${nl2br(escapeHTML(msg.text))}</div>
+                <div style="color: var(--text-time);" class="text-[10px] ml-1.5 mb-0.5 whitespace-nowrap shrink-0">${escapeHTML(msg.time)}</div>
+              </div>
+            </div>
+          `;
+        } else if (msg.type === 'self') {
+          
+          let readHtml = '';
+          if (state.chatType === 'single') {
+            readHtml = msg.read ? '<span class="mb-0.5">既読</span>' : '<span>&nbsp;</span>';
+          } else {
+            const rc = parseInt(msg.readCount !== undefined ? msg.readCount : 1, 10);
+            readHtml = (rc > 0) ? `<span class="mb-0.5">既読 ${rc}</span>` : '<span>&nbsp;</span>';
+          }
+
+          item.className = 'flex justify-end mb-4';
+          item.innerHTML = `
+            <div class="flex items-end max-w-[85%]">
+              <div style="color: var(--text-time);" class="text-[10px] mr-1.5 mb-0.5 text-right flex flex-col justify-end whitespace-nowrap shrink-0">
+                ${readHtml}
+                <span>${escapeHTML(msg.time)}</span>
+              </div>
+              <div class="balloon-right shadow-sm">${nl2br(escapeHTML(msg.text))}</div>
+            </div>
+          `;
+        }
+        container.appendChild(item);
+      });
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // --- 操作アクション ---
+    function addMessage(type) {
+      const newId = Date.now();
+      if (type === 'date') state.messages.push({ id: newId, type: 'date', dateType: 'today', customDate: '' });
+      else state.messages.push({ id: newId, type: type, partnerId: 'm1', text: '', time: state.time, read: true, readCount: 1 });
+      renderControlPanel(); saveState();
+      setTimeout(() => {
+        const editor = document.getElementById('tab-edit-content');
+        editor.parentElement.scrollTo({ top: editor.parentElement.scrollHeight, behavior: 'smooth' });
+      }, 50);
+    }
+    
+    function moveMessage(index, direction) {
+      if (direction === -1 && index > 0) [state.messages[index], state.messages[index - 1]] = [state.messages[index - 1], state.messages[index]];
+      else if (direction === 1 && index < state.messages.length - 1) [state.messages[index], state.messages[index + 1]] = [state.messages[index + 1], state.messages[index]];
+      renderControlPanel(); saveState();
+    }
+    
+    // --- ⚠️ 同意モーダルと画像保存処理 ---
+    function showConsentModal() {
+      document.getElementById('consent-checkbox').checked = false;
+      toggleConsentButton();
+      document.getElementById('consent-modal').classList.remove('hidden');
+    }
+
+    function closeConsentModal() {
+      document.getElementById('consent-modal').classList.add('hidden');
+    }
+
+    function toggleConsentButton() {
+      const isChecked = document.getElementById('consent-checkbox').checked;
+      const btn = document.getElementById('btn-execute-download');
+      btn.disabled = !isChecked; 
+    }
+
+    async function executeDownload() {
+      closeConsentModal(); 
+      await saveAsImage();
+    }
+
+    async function saveAsImage() {
+      const target = document.getElementById('preview-content');
+      const wrapper = document.getElementById('preview-wrapper');
+      const btn = document.getElementById('save-btn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳ 画像を生成中...'; btn.disabled = true;
+      const originalTransform = wrapper.style.transform;
+      wrapper.style.transform = 'scale(1)';
+      await new Promise(resolve => setTimeout(resolve, 100));
+      try {
+        const canvas = await html2canvas(target, { scale: 2, backgroundColor: null, useCORS: true, logging: false, width: 375, height: 812 });
+        const link = document.createElement('a'); link.download = `line-talk-${state.theme}.png`; link.href = canvas.toDataURL('image/png'); link.click();
+      } catch (err) { console.error("画像の生成に失敗しました:", err); alert("画像の生成に失敗しました。"); } 
+      finally { wrapper.style.transform = originalTransform; btn.innerHTML = originalText; btn.disabled = false; }
+    }
+
+    // --- イベント監視と初期化 ---
+    document.addEventListener('DOMContentLoaded', () => {
+      initUnreadDropdown();
+      loadState();
+      syncFormFromState();
+      updateAllIconPreviews();
+      renderControlPanel();
+      renderPreview();
+
+      if (typeof Sortable !== 'undefined') {
+        Sortable.create(document.getElementById('message-list-editor'), {
+          handle: '.drag-handle',
+          animation: 150,
+          ghostClass: 'sortable-ghost',
+          onEnd: function (evt) {
+            if (evt.oldIndex === evt.newIndex) return;
+            const movedItem = state.messages.splice(evt.oldIndex, 1)[0];
+            state.messages.splice(evt.newIndex, 0, movedItem);
+            saveState();
+            renderControlPanel();
+            renderPreview();
+          }
+        });
+      }
+      
+      document.getElementById('input-time').addEventListener('input', (e) => { state.time = e.target.value; renderPreview(); saveState(); });
+      document.getElementById('input-unread').addEventListener('change', (e) => { state.unreadCount = e.target.value; renderPreview(); saveState(); });
+      document.getElementById('input-single-name').addEventListener('input', (e) => { state.singlePartner.name = e.target.value; renderPreview(); saveState(); });
+      document.getElementById('input-group-name').addEventListener('input', (e) => { state.groupInfo.name = e.target.value; renderPreview(); saveState(); });
+      document.getElementById('input-group-count').addEventListener('input', (e) => { state.groupInfo.count = parseInt(e.target.value, 10) || 0; renderPreview(); saveState(); });
+      
+      document.getElementById('settings-group').addEventListener('input', (e) => {
+        if(e.target.classList.contains('member-name-input')) {
+          const m = state.groupMembers.find(m => m.id === e.target.dataset.member);
+          if (m) { m.name = e.target.value; renderPreview(); saveState(); }
+        }
+      });
+      document.getElementById('settings-group').addEventListener('change', (e) => {
+        if(e.target.classList.contains('member-name-input')) { renderControlPanel(); updateAllIconPreviews(); }
+      });
+
+      const editor = document.getElementById('message-list-editor');
+      
+      editor.addEventListener('input', (e) => {
+        const item = e.target.closest('.message-item'); if (!item) return;
+        const index = parseInt(item.dataset.index); const field = e.target.dataset.field; if (!field) return;
+        if (e.target.type === 'checkbox') state.messages[index][field] = e.target.checked;
+        else if (e.target.type === 'number') state.messages[index][field] = parseInt(e.target.value, 10);
+        else state.messages[index][field] = e.target.value;
+        saveState();
+        renderPreview(); 
+      });
+      
+      editor.addEventListener('change', (e) => {
+        const field = e.target.dataset.field;
+        if (field === 'partnerId' || e.target.type === 'number' || field === 'dateType') {
+          const item = e.target.closest('.message-item'); if (!item) return;
+          state.messages[parseInt(item.dataset.index)][field] = e.target.value;
+          renderControlPanel(); renderPreview(); saveState();
+        }
+      });
+      
+      // 💡 削除ボタンのクリック処理を「自作ダイアログの呼び出し」に変更
+      editor.addEventListener('click', (e) => {
+        const item = e.target.closest('.message-item'); if (!item) return;
+        const index = parseInt(item.dataset.index);
+        
+        if (e.target.closest('.delete-btn')) { 
+          showConfirm('このメッセージを削除しますか？', '削除', () => {
+            state.messages.splice(index, 1); 
+            renderControlPanel(); 
+            saveState(); 
+            renderPreview(); 
+          });
+        } 
+        else if (e.target.closest('.up-btn')) moveMessage(index, -1);
+        else if (e.target.closest('.down-btn')) moveMessage(index, 1);
+      });
+    });
+  </script>
+</body>
+</html>
+
+
+```
